@@ -138,7 +138,7 @@ class Observer:
 
         self.FETCH_INTERVAL = 10
 
-        self.history = deque(maxlen=(3*60) // self.FETCH_INTERVAL)
+        self.history = deque(maxlen=(5*60) // self.FETCH_INTERVAL)
     
     def record(self, info:dict):
         """

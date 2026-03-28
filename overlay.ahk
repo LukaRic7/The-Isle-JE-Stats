@@ -1,11 +1,11 @@
-#Requires AutoHotkey >= v2.0
+#Requires AutoHotkey v2.0
 #SingleInstance Force
 Persistent(true)
 
 #Include jxon.ahk
 
 ; Settings, can not be changed when compiled obviously!
-C_OVERLAY := { monitor: 1, xPct: 0.02, yPct: 0.85 }
+C_OVERLAY := { monitor: 1, xPct: 0.9, yPct: 0.67 }
 C_COLORS := {
     overlay: '1E1E1E', health: 'ff4c4c', growth: '7cfc00',
     hunger: 'ffa500', thirst: '00ffff'
@@ -53,7 +53,7 @@ ReplaceSign(val, neg, pos) {
         return val
 
     ; Replace sign and return absolute
-    return (val > 0 ? pos : neg) . Abs(val)
+    return (val > 0 ? pos : neg) . Format('{:.1f}', Abs(val))
 }
 
 /**
@@ -67,9 +67,9 @@ GUI_AddRow(label, color, startY) {
     Overlay.SetFont('s12 c' . color)
     Overlay.AddText('x2 y' . startY . ' w55 h20', label . ':')
 
-    pct   := Overlay.AddText('x+10 yp wp hp', '-')
-    delta := Overlay.AddText('x+5 yp wp hp', '-')
-    est   := Overlay.AddText('x+5 yp wp hp', '-')
+    pct   := Overlay.AddText('x+5 yp w45 hp', '-')
+    delta := Overlay.AddText('x+5 yp w70 hp', '-')
+    est   := Overlay.AddText('x+5 yp w50 hp', '-')
 
     return { pct: pct, delta: delta, est: est }
 }
@@ -94,10 +94,10 @@ GUI_UpdateValues() {
     ; Set the deltas
     delta := data.Get('delta_per_min')
     if delta {
-        health.delta.Value := ReplaceSign(Round(delta.Get('Health')), '↓', '⤒') . '%/m'
-        growth.delta.Value := ReplaceSign(Round(delta.Get('Growth')), '↓', '↑') . '%/m'
-        hunger.delta.Value := ReplaceSign(Round(delta.Get('Hunger')), '↓', '↑') . '%/m'
-        thirst.delta.Value := ReplaceSign(Round(delta.Get('Thirst')), '↓', '↑') . '%/m'
+        health.delta.Value := ReplaceSign(Round(delta.Get('Health') * 10, 1), '↓', '⤒') . '‰/m'
+        growth.delta.Value := ReplaceSign(Round(delta.Get('Growth') * 10, 1), '↓', '↑') . '‰/m'
+        hunger.delta.Value := ReplaceSign(Round(delta.Get('Hunger') * 10, 1), '↓', '↑') . '‰/m'
+        thirst.delta.Value := ReplaceSign(Round(delta.Get('Thirst') * 10, 1), '↓', '↑') . '‰/m'
     }
 
     ; Set the ESTs
