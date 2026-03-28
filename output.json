@@ -1,0 +1,10 @@
+{
+    "current": {
+        "Growth": 1.0,
+        "Health": 1.0,
+        "Hunger": 1.0,
+        "Thirst": 1.0
+    },
+    "delta_per_min": null,
+    "est_time_min": null
+}
