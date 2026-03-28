@@ -136,20 +136,62 @@ class Observer:
             user_agent=config_data.get('user-agent')
         )
 
-        self.FETCH_INTERVAL = 10
+        # Variables used to predict server update timings
+        self.last_change_time       = None
+        self.tick_intervals         = deque(maxlen=10)
+        self.predicted_next_update  = None
+        self.POST_UPDATE_DELAY      = 2
 
-        self.history = deque(maxlen=(5*60) // self.FETCH_INTERVAL)
+        self.history = deque(maxlen=15)
     
     def record(self, info:dict):
         """
-        **Add information to the history.**
+        **Add information to the history, and predict server timings.**
         
         *Parameters*:
         - `info` (dict): Information to be added.
         """
 
+        now = time.time()
+
+        if len(self.history) > 0:
+            last_info = self.history[-1]['info']
+
+            if last_info != info:
+                # Server tick update detected
+                if self.last_change_time is not None:
+                    interval = now - self.last_change_time
+                    self.tick_intervals.append(interval)
+
+                self.last_change_time = now
+
+                # Predict next update
+                if len(self.tick_intervals) > 0:
+                    self.predicted_next_update = (
+                        now + sum(self.tick_intervals)
+                        / len(self.tick_intervals)
+                    )
+
         self.history.append({ 'time': time.time(), 'info': info })
     
+    def get_sleep_time(self) -> float:
+        """
+        **Sleep until the predicted update time.**
+        
+        *Returns*:
+        - (float): Time to sleep.
+        """
+
+        now = time.time()
+
+        if not self.predicted_next_update:
+            return 10
+
+        target_time = self.predicted_next_update + self.POST_UPDATE_DELAY
+        sleep_time = target_time - now
+
+        return max(1, min(sleep_time, 30))
+
     def calculate_deltas(self) -> dict:
         """
         **Calculate delta values from history.**
@@ -161,20 +203,25 @@ class Observer:
         # Ensure more than 2 datapoints
         if len(self.history) < 2: return
 
-        first = self.history[0]
-        last  = self.history[-1]
+        last = self.history[-1]
 
-        # Ensure theres a non-zero delta time
-        delta_time_s = last['time'] - first['time']
-        if delta_time_s == 0: return
+        for i in range(len(self.history) - 2, -1, -1):
+            prev = self.history[i]
 
-        # Calculate the delta
-        deltas = {}
-        for key in last['info']:
-            change      = last['info'][key] - first['info'].get(key, 0)
-            deltas[key] = change / (delta_time_s / 60)
-        
-        return deltas
+            # Check if any value changed
+            if prev['info'] != last['info']:
+                delta_time_s = last['time'] - prev['time']
+                if delta_time_s == 0: return
+                
+                deltas = {}
+                for key in last['info']:
+                    change = last['info'][key] - prev['info'].get(key, 0)
+                    deltas[key] = change / (delta_time_s / 60)
+                
+                return deltas
+
+        # No changes found
+        return
 
     def estimate_time_to_target(self, info:dict, deltas:dict) -> dict:
         """
@@ -251,6 +298,24 @@ class Observer:
 
         return extracted_info
 
+    def extract_balance(self, soup:BeautifulSoup) -> int:
+        """
+        **Extract the balance from the parsed HTML soup.**
+        
+        *Parameters*:
+        - `soup` (BeautifulSoup): Parsed HTML to extract from.
+        
+        *Returns*:
+        - (int): The balance extracted.
+        """
+
+        balance = soup.find('div', class_='mt-1 text-base font-medium')
+
+        if not balance:
+            return 0
+
+        return balance.text
+
     def mainloop(self):
         """
         **Enter the mainloop, uses while true.**
@@ -258,8 +323,9 @@ class Observer:
 
         # Infinite loop!
         while True:
-            # Ensure the server is not spammed, and CPU is not wasted
-            time.sleep(self.FETCH_INTERVAL)
+            sleep_time = self.get_sleep_time()
+            lr.Log.debug(f'Sleeping for: {sleep_time:.2f}s')
+            time.sleep(sleep_time)
 
             # Ensure the fetch was valid
             soup = self.Client.fetch('player')
@@ -277,8 +343,10 @@ class Observer:
             # Write to the output file
             self.ConfigOut.write({
                 'current': info,
-                'delta_per_min': deltas,
-                'est_time_min': estimates
+                'delta-per-min': deltas,
+                'est-time-min': estimates,
+                'next-update-unix': self.predicted_next_update,
+                'balance': self.extract_balance(soup)
             })
 
 def main():

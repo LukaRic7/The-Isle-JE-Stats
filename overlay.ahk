@@ -5,7 +5,7 @@ Persistent(true)
 #Include jxon.ahk
 
 ; Settings, can not be changed when compiled obviously!
-C_OVERLAY := { monitor: 1, xPct: 0.9, yPct: 0.67 }
+C_OVERLAY := { monitor: 1, xPct: 0.9, yPct: 0.65 }
 C_COLORS := {
     overlay: '1E1E1E', health: 'ff4c4c', growth: '7cfc00',
     hunger: 'ffa500', thirst: '00ffff'
@@ -22,17 +22,24 @@ Overlay := Gui("+AlwaysOnTop +ToolWindow -Caption +E0x80000 +E0x20")
 Overlay.BackColor := C_COLORS.overlay
 WinSetTransparent(200, Overlay.Hwnd)
 
+; Update info
+Overlay.SetFont('s11 cWhite')
+update_est := Overlay.AddText('x2 y2 h20 w120', 'Updating in: -')
+
+; Balance info
+balance_gui := Overlay.AddText('x+2 y2 h20 w116 Center', '$0')
+
 ; Create the rows
-health := GUI_AddRow('Health', C_COLORS.health, 2)
-growth := GUI_AddRow('Growth', C_COLORS.growth, 24)
-hunger := GUI_AddRow('Hunger', C_COLORS.hunger, 46)
-thirst := GUI_AddRow('Thirst', C_COLORS.thirst, 68)
+health := GUI_AddRow('Health', C_COLORS.health, 24)
+growth := GUI_AddRow('Growth', C_COLORS.growth, 46)
+hunger := GUI_AddRow('Hunger', C_COLORS.hunger, 68)
+thirst := GUI_AddRow('Thirst', C_COLORS.thirst, 90)
 
 ; Calculate the screen position, and display the GUI
 MonitorGet(C_OVERLAY.monitor, &mLeft, &mTop, &mRight, &mBottom)
 xPos := (mRight - mLeft) * C_OVERLAY.xPct
 yPos := (mBottom - mTop) * C_OVERLAY.yPct
-Overlay.Show('x' . xPos . ' y' . yPos . ' w242 h90')
+Overlay.Show('x' . xPos . ' y' . yPos . ' w242 h112')
 
 ; Mainloop, read daemon output file every second
 while true {
@@ -82,6 +89,19 @@ GUI_UpdateValues() {
     fileContent := FileRead('./output.json')
     data := Jxon_Load(&fileContent)
 
+    ; Set next update countdown
+    next_upd := data.Get('next-update-unix')
+    if next_upd {
+        unix := DateDiff(A_NowUTC, '19700101000000', 'Seconds')
+        update_est.Value := 'Updating In: ' . Round(next_upd - unix) . 's'
+    }
+
+    ; Set the balance
+    balance := data.Get('balance')
+    if balance {
+        balance_gui.Value := '$' . balance
+    }
+
     ; Set the currents
     current := data.Get('current')
     if current {
@@ -92,7 +112,7 @@ GUI_UpdateValues() {
     }
 
     ; Set the deltas
-    delta := data.Get('delta_per_min')
+    delta := data.Get('delta-per-min')
     if delta {
         health.delta.Value := ReplaceSign(Round(delta.Get('Health') * 10, 1), '↓', '⤒') . '‰/m'
         growth.delta.Value := ReplaceSign(Round(delta.Get('Growth') * 10, 1), '↓', '↑') . '‰/m'
@@ -101,7 +121,7 @@ GUI_UpdateValues() {
     }
 
     ; Set the ESTs
-    est := data.Get('est_time_min')
+    est := data.Get('est-time-min')
     if est {
         health.est.Value := '⤒' . Round(est.Get('Health')) . 'm'
         growth.est.Value := '⤒' . Round(est.Get('Growth')) . 'm'
