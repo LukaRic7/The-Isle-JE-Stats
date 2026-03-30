@@ -114,10 +114,10 @@ GUI_UpdateValues() {
     ; Set the deltas
     delta := data.Get('delta-per-min')
     if delta {
-        health.delta.Value := ReplaceSign(Round(delta.Get('Health') * 10, 1), '↓', '⤒') . '‰/m'
-        growth.delta.Value := ReplaceSign(Round(delta.Get('Growth') * 10, 1), '↓', '↑') . '‰/m'
-        hunger.delta.Value := ReplaceSign(Round(delta.Get('Hunger') * 10, 1), '↓', '↑') . '‰/m'
-        thirst.delta.Value := ReplaceSign(Round(delta.Get('Thirst') * 10, 1), '↓', '↑') . '‰/m'
+        health.delta.Value := ReplaceSign(Round(delta.Get('Health') * 100, 1), '↓', '⤒') . '%/m'
+        growth.delta.Value := ReplaceSign(Round(delta.Get('Growth') * 100, 1), '↓', '↑') . '%/m'
+        hunger.delta.Value := ReplaceSign(Round(delta.Get('Hunger') * 100, 1), '↓', '↑') . '%/m'
+        thirst.delta.Value := ReplaceSign(Round(delta.Get('Thirst') * 100, 1), '↓', '↑') . '%/m'
     }
 
     ; Set the ESTs
