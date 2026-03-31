@@ -141,6 +141,8 @@ class Observer:
         self.tick_intervals         = deque(maxlen=10)
         self.predicted_next_update  = None
         self.POST_UPDATE_DELAY      = 2
+        self.detected_phases        = deque(maxlen=5)
+        self.locked_phase           = None
 
         self.history = deque(maxlen=15)
     
@@ -158,21 +160,18 @@ class Observer:
             last_info = self.history[-1]['info']
 
             if last_info != info:
-                # Server tick update detected
-                if self.last_change_time is not None:
-                    interval = now - self.last_change_time
-                    self.tick_intervals.append(interval)
+                phase = now % 60
+                self.detected_phases.append(phase)
 
-                self.last_change_time = now
+                lr.Log.debug(f'Update detected at phase {phase:.2f}s')
 
-                # Predict next update
-                if len(self.tick_intervals) > 0:
-                    self.predicted_next_update = (
-                        now + sum(self.tick_intervals)
-                        / len(self.tick_intervals)
-                    )
+                if len(self.detected_phases) >= 3:
+                    avg_phase = sum(self.detected_phases) / len(self.detected_phases)
+                    self.locked_phase = avg_phase
 
-        self.history.append({ 'time': time.time(), 'info': info })
+                    lr.Log.info(f'Locked phase at: {self.locked_phase:.2f}s')
+
+        self.history.append({ 'time': now, 'info': info })
     
     def get_sleep_time(self) -> float:
         """
@@ -184,13 +183,22 @@ class Observer:
 
         now = time.time()
 
-        if not self.predicted_next_update:
-            return 10
+        if self.locked_phase is None:
+            return 1.0
 
-        target_time = self.predicted_next_update + self.POST_UPDATE_DELAY
-        sleep_time = target_time - now
+        current_minute = int(now // 60) * 60
+        next_update    = current_minute + self.locked_phase
 
-        return max(1, min(sleep_time, 30))
+        if next_update <= now:
+            next_update += 60
+        
+        target_time = next_update + self.POST_UPDATE_DELAY
+        sleep_time  = target_time - now
+
+        if sleep_time < 3:
+            return 1.0
+
+        return max(1, min(sleep_time, 60))
 
     def calculate_deltas(self) -> dict:
         """
@@ -323,9 +331,14 @@ class Observer:
 
         # Infinite loop!
         while True:
-            sleep_time = self.get_sleep_time()
-            lr.Log.debug(f'Sleeping for: {sleep_time:.2f}s')
-            time.sleep(sleep_time)
+            self.sleep_time = self.get_sleep_time()
+
+            current_config = self.ConfigOut.read()
+            current_config['next-update-unix'] = time.time() + self.sleep_time
+            self.ConfigOut.write(current_config)
+
+            lr.Log.debug(f'Sleeping for: {self.sleep_time:.2f}s')
+            time.sleep(self.sleep_time)
 
             # Ensure the fetch was valid
             soup = self.Client.fetch('player')
@@ -345,7 +358,7 @@ class Observer:
                 'current': info,
                 'delta-per-min': deltas,
                 'est-time-min': estimates,
-                'next-update-unix': self.predicted_next_update,
+                'next-update-unix': current_config['next-update-unix'],
                 'balance': self.extract_balance(soup)
             })
 
@@ -371,4 +384,6 @@ def main():
 
 # Ensure script is not being imported
 if __name__ == '__main__':
+    #lr.Log.disable(lr.LogLevel.DEBUG)
+
     main()
