@@ -1,4 +1,5 @@
 import requests, json, sys, os, time
+from datetime import datetime
 from collections import deque
 from bs4 import BeautifulSoup
 import loggerric as lr
@@ -136,69 +137,33 @@ class Observer:
             user_agent=config_data.get('user-agent')
         )
 
-        # Variables used to predict server update timings
-        self.last_change_time       = None
-        self.tick_intervals         = deque(maxlen=10)
-        self.predicted_next_update  = None
-        self.POST_UPDATE_DELAY      = 2
-        self.detected_phases        = deque(maxlen=5)
-        self.locked_phase           = None
+        self.POST_UPDATE_DELAY = 3
 
-        self.history = deque(maxlen=15)
+        self.history = deque(maxlen=5)
     
     def record(self, info:dict):
         """
-        **Add information to the history, and predict server timings.**
+        **Add information to the history.**
         
         *Parameters*:
         - `info` (dict): Information to be added.
         """
 
-        now = time.time()
-
-        if len(self.history) > 0:
-            last_info = self.history[-1]['info']
-
-            if last_info != info:
-                phase = now % 60
-                self.detected_phases.append(phase)
-
-                lr.Log.debug(f'Update detected at phase {phase:.2f}s')
-
-                if len(self.detected_phases) >= 3:
-                    avg_phase = sum(self.detected_phases) / len(self.detected_phases)
-                    self.locked_phase = avg_phase
-
-                    lr.Log.info(f'Locked phase at: {self.locked_phase:.2f}s')
+        now = time.time() 
 
         self.history.append({ 'time': now, 'info': info })
     
-    def get_sleep_time(self) -> float:
+    def get_sleep_time(self) -> int:
         """
         **Sleep until the predicted update time.**
         
         *Returns*:
-        - (float): Time to sleep.
+        - (int): Time to sleep.
         """
 
-        now = time.time()
+        now = datetime.now()
 
-        if self.locked_phase is None:
-            return 1.0
-
-        current_minute = int(now // 60) * 60
-        next_update    = current_minute + self.locked_phase
-
-        if next_update <= now:
-            next_update += 60
-        
-        target_time = next_update + self.POST_UPDATE_DELAY
-        sleep_time  = target_time - now
-
-        if sleep_time < 3:
-            return 1.0
-
-        return max(1, min(sleep_time, 60))
+        return 60 + self.POST_UPDATE_DELAY - now.second
 
     def calculate_deltas(self) -> dict:
         """
@@ -209,27 +174,22 @@ class Observer:
         """
 
         # Ensure more than 2 datapoints
-        if len(self.history) < 2: return
+        if len(self.history) < 2: return {}
 
-        last = self.history[-1]
+        total_change = {k: 0 for k in self.history[-1]['info']}
+        first_time = self.history[0]['time']
+        last_time  = self.history[-1]['time']
+        delta_minutes = (last_time - first_time) / 60
 
-        for i in range(len(self.history) - 2, -1, -1):
-            prev = self.history[i]
+        if delta_minutes == 0:
+            return {k: 0 for k in total_change}
 
-            # Check if any value changed
-            if prev['info'] != last['info']:
-                delta_time_s = last['time'] - prev['time']
-                if delta_time_s == 0: return
-                
-                deltas = {}
-                for key in last['info']:
-                    change = last['info'][key] - prev['info'].get(key, 0)
-                    deltas[key] = change / (delta_time_s / 60)
-                
-                return deltas
+        for key in total_change:
+            start_value = self.history[0]['info'].get(key, 0)
+            end_value   = self.history[-1]['info'].get(key, 0)
+            total_change[key] = (end_value - start_value) / delta_minutes
 
-        # No changes found
-        return
+        return total_change
 
     def estimate_time_to_target(self, info:dict, deltas:dict) -> dict:
         """
@@ -381,6 +341,7 @@ def main():
     # Catch unexpected errors
     except Exception as e:
         lr.Log.error(f'Unknown exception occurred: {e}')
+        input()
 
 # Ensure script is not being imported
 if __name__ == '__main__':
